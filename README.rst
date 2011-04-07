@@ -26,6 +26,5 @@ So that players can join your server.
 To see the changes take effect restart the prosody server thus:
 
 $ /etc/init.d/prosody restart
- * Restarting Prosody XMPP Server prosody                                [ OK ]
 
 Have fun!
