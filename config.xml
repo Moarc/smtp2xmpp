@@ -1,10 +1,11 @@
-<config xmlns="sleekxmpp:config">
-  <jid>todo.localhost</jid>
-  <secret>ssshh</secret>
-  <server>localhost</server>
-  <port>8888</port>
+<config xmlns="slixmpp:config">
+  <jid>mail.jabber.example</jid>
+  <secret>password</secret>
+  <server>jabber.example</server>
+  <port>5348</port>
 
   <query xmlns="jabber:iq:roster">
-    <item jid="user@example.com" subscription="both" />
+    <item jid="juliet@capulet.example" />
+    <item jid="romeo@montague.example" />
   </query>
 </config>

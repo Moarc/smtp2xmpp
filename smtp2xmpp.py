@@ -1,33 +1,61 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""
-    SleekXMPP: The Sleek XMPP Library
-    Copyright (C) 2010  Nathanael C. Fritz
-    This file is part of SleekXMPP.
-
-    See the file LICENSE for copying permission.
-"""
-
 import sys
 import logging
 import time
 from optparse import OptionParser
+import asyncio
+import aiosmtpd
+from aiosmtpd.controller import UnthreadedController
+import socket
+import email
+import email.policy
 
-import sleekxmpp
-from sleekxmpp.componentxmpp import ComponentXMPP
-from sleekxmpp.stanza.roster import Roster
-from sleekxmpp.xmlstream import ElementBase
-from sleekxmpp.xmlstream.stanzabase import ET, registerStanzaPlugin
+import slixmpp
+from slixmpp.componentxmpp import ComponentXMPP
+from slixmpp.stanza.roster import Roster
+from slixmpp.xmlstream import ElementBase
+from slixmpp.xmlstream.stanzabase import ET, register_stanza_plugin
 
-# Python versions before 3.0 do not use UTF-8 encoding
-# by default. To ensure that Unicode is handled properly
-# throughout SleekXMPP, we will set the default encoding
-# ourselves to UTF-8.
-if sys.version_info < (3, 0):
-    reload(sys)
-    sys.setdefaultencoding('utf8')
+def receive_systemd_socket(self):
+    """
+    Creates a 'server task' that listens on a Unix Socket file.
+    Does NOT actually start the protocol object itself;
+    _factory_invoker() is only called upon fist connection attempt.
+    """
+    return self.loop.create_server(
+        self._factory_invoker,
+        sock=socket.fromfd(3, socket.AF_INET, socket.SOCK_STREAM),
+        ssl=self.ssl_context,
+        )
 
+aiosmtpd.controller.InetMixin._create_server = receive_systemd_socket
+
+class MailHandler:
+    async def handle_RCPT(self, server, session, envelope, address, rcpt_options):
+        #if not address.endswith('@localhost'):
+        #    return '550 not relaying to that domain'
+        envelope.rcpt_tos.append(address)
+        return '250 OK'
+
+    async def handle_DATA(self, server, session, envelope):
+        fromjid = envelope.mail_from.replace('localhost','mail.hylobat.es')
+        body = email.message_from_bytes(envelope.content, policy=email.policy.default).get_body(preferencelist=('plain', 'html')).get_content()
+
+        logging.log(5,'Message from %s' % envelope.mail_from)
+        logging.log(5,'Message for %s' % envelope.rcpt_tos)
+        logging.log(5,'Message data:\n')
+
+        for ln in body.splitlines():
+            logging.log(5,f'> {ln}'.strip())
+        logging.log(5,'')
+        logging.log(5,'End of message')
+
+        for jid in xmpp.roster:
+            xmpp.send_presence(pfrom=fromjid, pto=jid, pshow='xa')
+            xmpp.send_message(mfrom=fromjid, mto=jid, mbody=body)
+        return '250 Message accepted for delivery'
 
 class Config(ElementBase):
 
@@ -42,7 +70,7 @@ class Config(ElementBase):
     information since it already exists.
 
     Example config XML:
-      <config xmlns="sleekxmpp:config">
+      <config xmlns="slixmpp:config">
         <jid>component.localhost</jid>
         <secret>ssshh</secret>
         <server>localhost</server>
@@ -55,22 +83,15 @@ class Config(ElementBase):
     """
 
     name = "config"
-    namespace = "sleekxmpp:config"
+    namespace = "slixmpp:config"
     interfaces = set(('jid', 'secret', 'server', 'port'))
     sub_interfaces = interfaces
 
 
-registerStanzaPlugin(Config, Roster)
+register_stanza_plugin(Config, Roster)
 
 
 class ConfigComponent(ComponentXMPP):
-
-    """
-    A simple SleekXMPP component that uses an external XML
-    file to store its configuration data. To make testing
-    that the component works, it will also echo messages sent
-    to it.
-    """
 
     def __init__(self, config):
         """
@@ -98,11 +119,7 @@ class ConfigComponent(ComponentXMPP):
         # The message event is triggered whenever a message
         # stanza is received. Be aware that that includes
         # MUC messages and error messages.
-        self.add_event_handler("message", self.message)
-
-        #############################################################
-        #########
-        self.todo = []
+        #self.add_event_handler("message", self.message)
 
     def start(self, event):
         """
@@ -123,68 +140,7 @@ class ConfigComponent(ComponentXMPP):
                      data.
         """
         for jid in self.roster:
-            if self.roster[jid]['subscription'] != 'none':
-                self.sendPresence(pfrom=self.jid, pto=jid)
-
-    def message(self, msg):
-        """
-        Process incoming message stanzas. Be aware that this also
-        includes MUC messages and error messages. It is usually
-        a good idea to check the messages's type before processing
-        or sending replies.
-
-        Since a component may send messages from any number of JIDs,
-        it is best to always include a from JID.
-
-        Arguments:
-            msg -- The received message stanza. See the documentation
-                   for stanza objects and the Message stanza to see
-                   how it may be used.
-        """
-        # The reply method will use the messages 'to' JID as the
-        # outgoing reply's 'from' JID.
-        #result = str(eval(msg['body']))
-        #msg.reply(result).send()
-        body = msg['body']
-
-        splitBody = body.split(':', 1)
-        commandLen = len(splitBody)
-        if commandLen >= 1:
-            command = splitBody[0].lower()
-            if command == "add":
-                if commandLen == 2:
-                    self.todo.append(splitBody[1])
-                    reply = "Added item. %d items in the todo list." % len(self.todo)
-                else:
-                    reply = "You need to supply something to add!"
-            elif command == "list":
-                reply = "On the todo list:\n"
-                if self.todo:
-                    for num, val in enumerate(self.todo):
-                       reply += "%d: %s\n" % (num, val)
-                else:
-                    reply = "EMPTY! :-)"
-            elif command == "delete":
-                if commandLen == 2:
-                    try:
-                        pos = int(splitBody[1])
-                        if pos >= 0 and pos < len(self.todo):
-                            del self.todo[pos]
-                            reply = "OK... deleted"
-                        else:
-                            reply = "I can't find that item!"
-                    except ValueError:
-                        reply = "You must supply a number."
-                else:
-                    reply = "You must say which item to delete. (List, see the items.)"
-            else:
-                reply = "I don't understand %s" % command
-        else:
-            reply = "I don't understand :-("
-
-
-        msg.reply(reply).send()
-
+            self.send_presence(pfrom=self.jid, pto=jid)
 
 if __name__ == '__main__':
     # Setup the command line arguments.
@@ -203,7 +159,7 @@ if __name__ == '__main__':
 
     # Component name and secret options.
     optp.add_option("-c", "--config", help="path to config file",
-                    dest="config", default="config.xml")
+                    dest="config", default="/etc/smtp2xmpp/config.xml")
 
     opts, args = optp.parse_args()
 
@@ -212,7 +168,7 @@ if __name__ == '__main__':
                         format='%(levelname)-8s %(message)s')
 
     # Load configuration data.
-    config_file = open(opts.config, 'r+')
+    config_file = open(opts.config, 'r')
     config_data = "\n".join([line for line in config_file])
     config = Config(xml=ET.fromstring(config_data))
     config_file.close()
@@ -221,14 +177,21 @@ if __name__ == '__main__':
     # may have interdependencies, the order in which you register them does
     # not matter.
     xmpp = ConfigComponent(config)
-    xmpp.registerPlugin('xep_0030') # Service Discovery
-    xmpp.registerPlugin('xep_0004') # Data Forms
-    xmpp.registerPlugin('xep_0060') # PubSub
-    xmpp.registerPlugin('xep_0199') # XMPP Ping
+    xmpp.register_plugin('xep_0030') # Service Discovery
+    xmpp.register_plugin('xep_0004') # Data Forms
+    xmpp.register_plugin('xep_0060') # PubSub
+    xmpp.register_plugin('xep_0199') # XMPP Ping
 
     # Connect to the XMPP server and start processing XMPP stanzas.
-    if xmpp.connect():
-        xmpp.process(threaded=False)
-        print("Done")
-    else:
-        print("Unable to connect.")
+    try:
+        xmpp.connect()
+        #xmpp.process()
+        controller = UnthreadedController(MailHandler(), port=25, hostname="localhost", server_hostname="localhost", loop=xmpp.loop)
+        controller.begin()
+        #tasks = [asyncio.sleep(10)]
+        tasks = [xmpp.disconnected]
+        xmpp.loop.run_until_complete(asyncio.wait(tasks))
+        #xmpp.loop.run_forever()
+    except Exception as exception:
+        logging.exception(exception)
+    print("Done")
