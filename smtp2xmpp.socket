@@ -1,0 +1,11 @@
+[Unit]
+Description = smtp2xmpp
+
+[Socket]
+#SocketUser = jabber
+#SocketGroup = jabber
+#SocketMode = 0660
+ListenStream = 25
+
+[Install]
+WantedBy = sockets.target

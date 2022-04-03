@@ -1,0 +1,15 @@
+[Unit]
+Description = smtp2xmpp
+
+[Service]
+Type=simple
+User = jabber
+Group = jabber
+ExecStart = /usr/local/bin/smtp2xmpp.py -d
+#StandardOutput = socket
+#StandardInput = socket
+#StandardError = socket
+#Restart = no
+
+[Install]
+WantedBy = multi-user.target
