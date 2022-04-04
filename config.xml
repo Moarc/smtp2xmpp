@@ -1,8 +1,11 @@
 <config xmlns="slixmpp:config">
-  <jid>mail.jabber.example</jid>
+  <component>mail</component>
+  <host>jabber.example</host>
   <secret>password</secret>
   <server>jabber.example</server>
   <port>5348</port>
+
+  <!-- <rosteronly /> -->
 
   <query xmlns="jabber:iq:roster">
     <item jid="juliet@capulet.example" />

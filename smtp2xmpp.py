@@ -40,7 +40,7 @@ class MailHandler:
         return '250 OK'
 
     async def handle_DATA(self, server, session, envelope):
-        fromjid = envelope.mail_from.replace('localhost','mail.hylobat.es')
+        fromjid = envelope.mail_from.replace('localhost',xmpp.boundjid.bare).replace('127.0.0.1',xmpp.boundjid.bare)
         body = email.message_from_bytes(envelope.content, policy=email.policy.default).get_body(preferencelist=('plain', 'html')).get_content()
 
         logging.log(5,'Message from %s' % envelope.mail_from)
@@ -52,9 +52,15 @@ class MailHandler:
         logging.log(5,'')
         logging.log(5,'End of message')
 
-        for jid in xmpp.roster:
-            xmpp.send_presence(pfrom=fromjid, pto=jid, pshow='xa')
-            xmpp.send_message(mfrom=fromjid, mto=jid, mbody=body)
+        if config['rosteronly']:
+            for jid in xmpp.roster:
+                xmpp.send_presence(pfrom=fromjid, pto=jid, pshow='xa')
+                xmpp.send_message(mfrom=fromjid, mto=jid, mbody=body)
+        else:
+            for rcpt in envelope.rcpt_tos:
+                rcpt = rcpt.replace('localhost',config['host']).replace('127.0.0.1',config['host'])
+                xmpp.send_presence(pfrom=fromjid, pto=rcpt, pshow='xa')
+                xmpp.send_message(mfrom=fromjid, mto=rcpt, mbody=body)
         return '250 Message accepted for delivery'
 
 class Config(ElementBase):
@@ -84,8 +90,9 @@ class Config(ElementBase):
 
     name = "config"
     namespace = "slixmpp:config"
-    interfaces = set(('jid', 'secret', 'server', 'port'))
-    sub_interfaces = interfaces
+    interfaces = {'component', 'host', 'secret', 'server', 'port', 'rosteronly'}
+    sub_interfaces = {'component', 'host', 'secret', 'server', 'port'}
+    bool_interfaces = {'rosteronly'}
 
 
 register_stanza_plugin(Config, Roster)
@@ -101,7 +108,7 @@ class ConfigComponent(ComponentXMPP):
             config      -- The XML contents of the config file.
             config_file -- The XML config file object itself.
         """
-        ComponentXMPP.__init__(self, config['jid'],
+        ComponentXMPP.__init__(self, "{}.{}".format(config['component'],config['host']),
                                      config['secret'],
                                      config['server'],
                                      config['port'])
