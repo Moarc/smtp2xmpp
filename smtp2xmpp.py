@@ -74,18 +74,6 @@ class Config(ElementBase):
 
     We will reuse the IQ roster query stanza to store roster
     information since it already exists.
-
-    Example config XML:
-      <config xmlns="slixmpp:config">
-        <jid>component.localhost</jid>
-        <secret>ssshh</secret>
-        <server>localhost</server>
-        <port>8888</port>
-
-        <query xmlns="jabber:iq:roster">
-          <item jid="user@example.com" subscription="both" />
-        </query>
-      </config>
     """
 
     name = "config"
