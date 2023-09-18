@@ -18,19 +18,28 @@ from slixmpp.stanza.roster import Roster
 from slixmpp.xmlstream import ElementBase
 from slixmpp.xmlstream.stanzabase import ET, register_stanza_plugin
 
-def receive_systemd_socket(self):
+def create_server(self):
     """
     Creates a 'server task' that listens on a Unix Socket file.
     Does NOT actually start the protocol object itself;
     _factory_invoker() is only called upon fist connection attempt.
     """
-    return self.loop.create_server(
-        self._factory_invoker,
-        sock=socket.fromfd(3, socket.AF_INET, socket.SOCK_STREAM),
-        ssl=self.ssl_context,
-        )
+    try:
+        sock=socket.fromfd(3, socket.AF_INET, socket.SOCK_STREAM)
+        return self.loop.create_server(
+            self._factory_invoker,
+            sock=sock,
+            ssl=self.ssl_context,
+            )
+    except:
+        return self.loop.create_server(
+                self._factory_invoker,
+                host=self.hostname,
+                port=self.port,
+                ssl=self.ssl_context,
+            )
 
-aiosmtpd.controller.InetMixin._create_server = receive_systemd_socket
+aiosmtpd.controller.InetMixin._create_server = create_server
 
 class MailHandler:
     async def handle_RCPT(self, server, session, envelope, address, rcpt_options):
